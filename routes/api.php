@@ -11,7 +11,10 @@ use App\Http\Controllers\Api\ReporteController;
 use App\Http\Controllers\Api\RolController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VentaController;
+use App\Http\Controllers\HealthController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/health', HealthController::class);
 
 /*
 |--------------------------------------------------------------------------

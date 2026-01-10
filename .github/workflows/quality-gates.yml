@@ -62,7 +62,7 @@ jobs:
 
       # Paso 8: GATE 3 - Ejecutar tests unitarios y de integración
       - name: "Gate 3: PHPUnit Tests"
-        run: php artisan test --parallel
+        run: php artisan test
         env:
           DB_CONNECTION: sqlite
           DB_DATABASE: database/database.sqlite

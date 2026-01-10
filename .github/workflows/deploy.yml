@@ -29,10 +29,7 @@ jobs:
     if: |
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
-    environment:
-      name: staging
-      url: ${{ secrets.STAGING_URL }}
-
+    environment: staging
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -96,10 +93,7 @@ jobs:
     if: |
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
-    environment:
-      name: production
-      url: ${{ secrets.PROD_URL }}
-
+    environment: production
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

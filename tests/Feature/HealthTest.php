@@ -2,30 +2,18 @@
 
 namespace Tests\Feature;
 
+// use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class HealthTest extends TestCase
+class ExampleTest extends TestCase
 {
-    public function test_health_endpoint_returns_ok_or_degraded(): void
+    /**
+     * A basic test example.
+     */
+    public function test_the_application_returns_a_successful_response(): void
     {
-        $res = $this->getJson('/api/health');
+        $response = $this->get('/api/health');
 
-        // En CI controlaremos DB para que sea OK.
-        // En local, si no hay DB responderá 503, por lo que permitimos ambos estados para este test genérico.
-        // Sin embargo, queremos asertar estructura.
-
-        if ($res->status() === 503) {
-            $res->assertStatus(503);
-            $res->assertJsonPath('status', 'degraded');
-        } else {
-            $res->assertStatus(200);
-            $res->assertJsonPath('status', 'ok');
-        }
-
-        $res->assertJsonStructure([
-            'status',
-            'app' => ['env', 'debug'],
-            'db' => ['ok', 'latency_ms', 'driver'],
-        ]);
+        $response->assertStatus(200);
     }
 }

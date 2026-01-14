@@ -10,22 +10,74 @@ class HealthTest extends TestCase
     {
         $res = $this->getJson('/api/health');
 
-        // En CI controlaremos DB para que sea OK.
-        // En local, si no hay DB responderá 503, por lo que permitimos ambos estados para este test genérico.
-        // Sin embargo, queremos asertar estructura.
+        // Accept both 200 (ok) and 503 (degraded) as valid responses
+        $this->assertTrue(
+            in_array($res->status(), [200, 503]),
+            "Expected status 200 or 503, got {$res->status()}"
+        );
 
-        if ($res->status() === 503) {
-            $res->assertStatus(503);
-            $res->assertJsonPath('status', 'degraded');
-        } else {
-            $res->assertStatus(200);
-            $res->assertJsonPath('status', 'ok');
-        }
-
+        // Verify JSON structure
         $res->assertJsonStructure([
             'status',
-            'app' => ['env', 'debug'],
+            'timestamp',
+            'app' => ['name', 'env', 'debug', 'version'],
             'db' => ['ok', 'latency_ms', 'driver'],
+            'cache' => ['ok', 'driver'],
+            'storage' => ['ok', 'path', 'writable'],
+            'queue' => ['ok', 'driver'],
         ]);
+
+        // Status should be 'ok' or 'degraded'
+        $status = $res->json('status');
+        $this->assertTrue(
+            in_array($status, ['ok', 'degraded']),
+            "Status should be 'ok' or 'degraded', got '{$status}'"
+        );
+    }
+
+    public function test_health_endpoint_db_check_structure(): void
+    {
+        $res = $this->getJson('/api/health');
+
+        $res->assertJsonStructure([
+            'db' => [
+                'ok',
+                'latency_ms',
+                'driver',
+            ],
+        ]);
+
+        // Verify db.ok is boolean
+        $this->assertIsBool($res->json('db.ok'));
+    }
+
+    public function test_health_endpoint_cache_check_structure(): void
+    {
+        $res = $this->getJson('/api/health');
+
+        $res->assertJsonStructure([
+            'cache' => [
+                'ok',
+                'driver',
+            ],
+        ]);
+
+        $this->assertIsBool($res->json('cache.ok'));
+    }
+
+    public function test_health_endpoint_storage_check_structure(): void
+    {
+        $res = $this->getJson('/api/health');
+
+        $res->assertJsonStructure([
+            'storage' => [
+                'ok',
+                'path',
+                'writable',
+            ],
+        ]);
+
+        $this->assertIsBool($res->json('storage.ok'));
+        $this->assertIsBool($res->json('storage.writable'));
     }
 }

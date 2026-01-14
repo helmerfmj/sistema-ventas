@@ -1,0 +1,177 @@
+name: CD Staging (Atomic)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ==================================================================
+  # JOB 1: BUILD
+  # ==================================================================
+  build:
+    name: Build Release
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_name: release-${{ github.sha }}.tar.gz
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, pdo_pgsql, bcmath
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install PHP Dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+      - name: Install Node Dependencies
+        run: npm ci
+
+      - name: Build Frontend Assets
+        run: npm run build
+
+      - name: Clean Cleanup
+        run: |
+          rm -rf .git
+          rm -rf node_modules
+          rm -rf tests
+          rm -rf .github
+          rm -rf .env
+
+      - name: Create Artifact
+        run: |
+          tar -czf release.tar.gz .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build
+          path: release.tar.gz
+          retention-days: 1
+
+  # ==================================================================
+  # JOB 2: DEPLOY
+  # ==================================================================
+  deploy:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    environment: proyecto
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-build
+
+      - name: Transfer Release to Server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+          source: "release.tar.gz"
+          target: "/tmp/release-${{ github.sha }}.tar.gz"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ secrets.STAGING_SSH_PORT || 22 }}
+          script: |
+            set -e # Detener script si hay error
+
+            # --- CONFIGURACIÓN ---
+            TIMESTAMP=$(date +%Y%m%d%H%M%S)
+            BASE_PATH=${{ secrets.STAGING_PATH || '/var/www/sistema-ventas' }}
+            RELEASE_PATH="$BASE_PATH/releases/$TIMESTAMP"
+            SHARED_PATH="$BASE_PATH/shared"
+            CURRENT_LINK="$BASE_PATH/current"
+            ARTIFACT_SOURCE="/tmp/release-${{ github.sha }}.tar.gz"
+            HEALTH_CHECK_URL="${{ secrets.STAGING_URL }}/api/health"
+
+            echo "🚀 Iniciando despliegue atómico v$TIMESTAMP"
+
+            # 1. Crear directorio para la nueva release
+            echo "📦 Creando directorio $RELEASE_PATH"
+            mkdir -p "$RELEASE_PATH"
+
+            # 2. Extraer código
+            echo "📂 Extrayendo archivos..."
+            tar -xzf "$ARTIFACT_SOURCE" -C "$RELEASE_PATH"
+            rm -f "$ARTIFACT_SOURCE" # Limpiar temporal
+
+            # 3. Enlaces Simbólicos (Shared Files)
+            echo "🔗 Enlazando archivos compartidos..."
+            ln -nfs "$SHARED_PATH/.env" "$RELEASE_PATH/.env"
+            ln -nfs "$SHARED_PATH/storage" "$RELEASE_PATH/storage"
+            # Si hay carpeta public/storage, enlazarla también
+            # ln -nfs "$SHARED_PATH/public/storage" "$RELEASE_PATH/public/storage"
+
+            # 4. Permisos
+            chmod -R 775 "$RELEASE_PATH/storage"
+            chmod -R 775 "$RELEASE_PATH/bootstrap/cache"
+
+            # 5. Comandos de Proyecto (Migraciones, Cache)
+            echo "⚙️ Ejecutando tareas de Laravel..."
+            cd "$RELEASE_PATH"
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+
+            # 6. Switch Atómico (Preparamos rollback capturando el current actual)
+            echo "🔄 Realizando cambio de versión (Symlink)..."
+            # Leer donde apunta 'current' ahora mismo (si existe) para rollback
+            if [ -L "$CURRENT_LINK" ]; then
+                PREVIOUS_RELEASE=$(readlink "$CURRENT_LINK")
+                echo "   (Versión anterior era: $PREVIOUS_RELEASE)"
+            fi
+
+            # Actualizar symlink de forma atómica
+            ln -nfs "$RELEASE_PATH" "$CURRENT_LINK"
+
+            # 7. Reload PHP-FPM
+            echo "🔄 Recargando PHP-FPM..."
+            # Ajustar nombre de servicio según versión, ej: php8.2-fpm
+            sudo systemctl reload php8.2-fpm || sudo service php8.2-fpm reload || echo "⚠️ No se pudo recargar PHP, verifique permisos sudo."
+
+            # 8. Health Check & Rollback
+            echo "🏥 Ejecutando Health Check..."
+            sleep 5 # Esperar a que PHP recargue
+
+            if curl -f -s "$HEALTH_CHECK_URL" > /dev/null; then
+                echo "✅ Health check PASÓ exitosamente."
+            else
+                echo "❌ Health check FALLÓ en $HEALTH_CHECK_URL"
+                echo "⚠️ INICIANDO ROLLBACK..."
+                
+                if [ ! -z "$PREVIOUS_RELEASE" ]; then
+                    ln -nfs "$PREVIOUS_RELEASE" "$CURRENT_LINK"
+                    echo "✅ Rollback completado: 'current' apunta de nuevo a $PREVIOUS_RELEASE"
+                    sudo systemctl reload php8.2-fpm || true
+                else
+                    echo "🚫 No hay versión anterior para hacer rollback."
+                fi
+                
+                echo "❌ Despliegue cancelado por fallo de salud."
+                exit 1
+            fi
+
+            # 9. Limpieza (Keep 5)
+            echo "🧹 Limpiando releases antiguas..."
+            cd "$BASE_PATH/releases"
+            ls -dt * | tail -n +6 | xargs -r rm -rf
+
+            echo "✨ Despliegue completado con éxito!"

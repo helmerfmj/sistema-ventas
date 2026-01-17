@@ -102,12 +102,14 @@ jobs:
           # Create shared directory structure if not exists
           if [ ! -d "${{ secrets.PROD_PATH }}/shared" ]; then
             echo "📁 Creating shared directory..."
-            sudo mkdir -p "${{ secrets.PROD_PATH }}/shared/storage/app/public"
-            sudo mkdir -p "${{ secrets.PROD_PATH }}/shared/storage/framework/cache"
-            sudo mkdir -p "${{ secrets.PROD_PATH }}/shared/storage/framework/sessions"
-            sudo mkdir -p "${{ secrets.PROD_PATH }}/shared/storage/framework/views"
-            sudo mkdir -p "${{ secrets.PROD_PATH }}/shared/storage/logs"
-            sudo chown -R www-data:www-data "${{ secrets.PROD_PATH }}/shared"
+            mkdir -p "${{ secrets.PROD_PATH }}/shared/storage/app/public"
+            mkdir -p "${{ secrets.PROD_PATH }}/shared/storage/framework/cache"
+            mkdir -p "${{ secrets.PROD_PATH }}/shared/storage/framework/sessions"
+            mkdir -p "${{ secrets.PROD_PATH }}/shared/storage/framework/views"
+            mkdir -p "${{ secrets.PROD_PATH }}/shared/storage/logs"
+            if sudo -n true 2>/dev/null; then
+              sudo chown -R www-data:www-data "${{ secrets.PROD_PATH }}/shared"
+            fi
             echo "✅ Shared directory created"
           else
             echo "✅ Shared directory exists"
@@ -116,8 +118,10 @@ jobs:
           # Create releases directory if not exists
           if [ ! -d "${{ secrets.PROD_PATH }}/releases" ]; then
             echo "📁 Creating releases directory..."
-            sudo mkdir -p "${{ secrets.PROD_PATH }}/releases"
-            sudo chown -R www-data:www-data "${{ secrets.PROD_PATH }}/releases"
+            mkdir -p "${{ secrets.PROD_PATH }}/releases"
+            if sudo -n true 2>/dev/null; then
+              sudo chown -R www-data:www-data "${{ secrets.PROD_PATH }}/releases"
+            fi
             echo "✅ Releases directory created"
           fi
 
@@ -174,10 +178,18 @@ jobs:
           ln -sfn "$(pwd)/shared/.env" "${RELEASE_DIR}/.env"
 
           echo "🔒 Setting permissions"
-          sudo chown -R www-data:www-data "${RELEASE_DIR}"
-          sudo find "${RELEASE_DIR}" -type f -exec chmod 644 {} \;
-          sudo find "${RELEASE_DIR}" -type d -exec chmod 755 {} \;
-          sudo chmod -R 775 shared/storage
+          # Try with sudo first, fall back to regular commands if sudo not available
+          if sudo -n true 2>/dev/null; then
+            sudo chown -R www-data:www-data "${RELEASE_DIR}"
+            sudo find "${RELEASE_DIR}" -type f -exec chmod 644 {} \;
+            sudo find "${RELEASE_DIR}" -type d -exec chmod 755 {} \;
+            sudo chmod -R 775 shared/storage
+          else
+            echo "⚠️ sudo not available, setting permissions without sudo"
+            find "${RELEASE_DIR}" -type f -exec chmod 644 {} \;
+            find "${RELEASE_DIR}" -type d -exec chmod 755 {} \;
+            chmod -R 775 shared/storage 2>/dev/null || true
+          fi
 
           echo "🗃️ Creating database backup"
           mkdir -p shared/database/backups
@@ -203,9 +215,13 @@ jobs:
           mv -Tf current.new current
 
           echo "🔃 Reloading services"
-          sudo systemctl reload php8.4-fpm || sudo systemctl reload php8.2-fpm || true
-          sudo nginx -s reload || true
-          sudo supervisorctl restart sistema-ventas-worker:* 2>/dev/null || true
+          if sudo -n true 2>/dev/null; then
+            sudo systemctl reload php8.4-fpm || sudo systemctl reload php8.2-fpm || true
+            sudo nginx -s reload || true
+            sudo supervisorctl restart sistema-ventas-worker:* 2>/dev/null || true
+          else
+            echo "⚠️ sudo not available, skipping service reload (may need manual restart)"
+          fi
 
           echo "🧹 Cleanup"
           rm -rf "/tmp/deploy-${TIMESTAMP}"
@@ -276,8 +292,10 @@ jobs:
             cd current
             php artisan up
 
-            sudo systemctl reload php8.4-fpm || sudo systemctl reload php8.2-fpm || true
-            sudo nginx -s reload || true
+            if sudo -n true 2>/dev/null; then
+              sudo systemctl reload php8.4-fpm || sudo systemctl reload php8.2-fpm || true
+              sudo nginx -s reload || true
+            fi
 
             echo "✅ Rollback complete"
           else

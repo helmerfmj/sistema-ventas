@@ -51,6 +51,7 @@ fi
 # Set permissions
 log_info "Setting permissions..."
 sudo chown -R $USER:www-data "$DEPLOY_PATH"
+sudo chmod 755 "$DEPLOY_PATH"  # Ensure the runner user can enter the directory
 sudo chmod -R 775 "$DEPLOY_PATH/shared/storage"
 
 log_success "Server setup complete!"

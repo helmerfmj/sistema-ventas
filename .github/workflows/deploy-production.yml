@@ -125,12 +125,32 @@ jobs:
             echo "✅ Releases directory created"
           fi
 
-          if [ ! -f "${{ secrets.PROD_PATH }}/shared/.env" ]; then
-            echo "⚠️ Warning: .env not found in shared directory"
-            echo "Please create ${{ secrets.PROD_PATH }}/shared/.env with production settings"
-            exit 1
-          fi
-          echo "✅ .env exists"
+          # Create .env file from secrets
+          echo "📝 Creating .env file from secrets..."
+          ENV_FILE="${{ secrets.PROD_PATH }}/shared/.env"
+          echo 'APP_NAME="Sistema Ventas"' > "$ENV_FILE"
+          echo 'APP_ENV=production' >> "$ENV_FILE"
+          echo 'APP_KEY=${{ secrets.APP_KEY }}' >> "$ENV_FILE"
+          echo 'APP_DEBUG=false' >> "$ENV_FILE"
+          echo 'APP_URL=${{ secrets.PROD_URL }}' >> "$ENV_FILE"
+          echo '' >> "$ENV_FILE"
+          echo 'LOG_CHANNEL=stack' >> "$ENV_FILE"
+          echo 'LOG_LEVEL=error' >> "$ENV_FILE"
+          echo '' >> "$ENV_FILE"
+          echo 'DB_CONNECTION=pgsql' >> "$ENV_FILE"
+          echo 'DB_HOST=127.0.0.1' >> "$ENV_FILE"
+          echo 'DB_PORT=5432' >> "$ENV_FILE"
+          echo 'DB_DATABASE=sistema_ventas_production' >> "$ENV_FILE"
+          echo 'DB_USERNAME=postgres' >> "$ENV_FILE"
+          echo 'DB_PASSWORD=${{ secrets.DB_PASSWORD }}' >> "$ENV_FILE"
+          echo '' >> "$ENV_FILE"
+          echo 'BROADCAST_DRIVER=log' >> "$ENV_FILE"
+          echo 'CACHE_DRIVER=file' >> "$ENV_FILE"
+          echo 'FILESYSTEM_DISK=local' >> "$ENV_FILE"
+          echo 'QUEUE_CONNECTION=sync' >> "$ENV_FILE"
+          echo 'SESSION_DRIVER=file' >> "$ENV_FILE"
+          echo 'SESSION_LIFETIME=120' >> "$ENV_FILE"
+          echo "✅ .env configured"
 
       # Enable maintenance mode
       - name: Enable Maintenance Mode

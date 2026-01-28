@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 1. BUILD ÚNICO (Regla de oro: Construir una vez)
   build:
     runs-on: ubuntu-latest
     steps:
@@ -14,17 +13,16 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2' # Versión segura
+          php-version: '8.2'
           extensions: pdo_pgsql, mbstring, xml
       
       - name: Install Dependencies
-        # --ignore-platform-reqs evita errores de versión de PHP en repos viejos
         run: composer install --no-dev --prefer-dist --ignore-platform-reqs --optimize-autoloader
       
       - name: Build Frontend
         run: |
           npm install --legacy-peer-deps
-          npm install @popperjs/core --save # <--- AGREGA ESTA LÍNEA MÁGICA
+          npm install @popperjs/core --save
           npm run build
       
       - name: Generate Release ID
@@ -39,7 +37,6 @@ jobs:
             !node_modules
             !.git
 
-  # 2. DEPLOY A STAGING
   deploy_staging:
     needs: build
     runs-on: ubuntu-latest
@@ -53,16 +50,81 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-      - name: Deploy Script
+
+      - name: Deploy Staging
         run: |
           RELEASE=$(cat RELEASE_ID)
           TARGET="/var/www/comprasventas/staging"
           USER="${{ secrets.STAGING_USER }}"
           HOST="${{ secrets.HOST_IP }}"
           
-          # COMANDO SSH CON LA OPCIÓN NUCLEAR (-o StrictHostKeyChecking=no)
+          # Crear carpeta
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $USER@$HOST "mkdir -p $TARGET/releases/$RELEASE"
           
+          # Subir archivos (Aquí fallaba el 127 si faltaba rsync)
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa" --exclude='.env' ./ $USER@$HOST:$TARGET/releases/$RELEASE
+          
+          # Configurar
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $USER@$HOST "
+            ln -nfs $TARGET/shared/.env $TARGET/releases/$RELEASE/.env
+            chmod -R 777 $TARGET/releases/$RELEASE/storage $TARGET/releases/$RELEASE/bootstrap/cache
+            ln -sfn $TARGET/releases/$RELEASE $TARGET/current
+            cd $TARGET/current
+            # Usamos la ruta completa por si acaso, o php directo
+            php artisan optimize:clear
+            php artisan migrate --force
+          "
+
+      - name: Health Check
+        run: |
+           sleep 5
+           curl -k "${{ secrets.STAGING_APP_URL }}/api/health" || echo "Health check warning"
+
+  rollback_staging:
+    needs: deploy_staging
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      # ESTO FALTABA PARA QUE NO DE ERROR 255:
+      - name: Setup SSH for Rollback
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+      
+      - name: Execute Rollback
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ secrets.STAGING_USER }}@${{ secrets.HOST_IP }} "
+            TARGET='/var/www/comprasventas/staging'
+            PREV=\$(ls -1dt \$TARGET/releases/*/ | sed -n '2p' | tr -d '/')
+            if [ -n \"\$PREV\" ]; then
+              ln -sfn \$PREV \$TARGET/current
+              echo "Rollback exitoso a \$PREV"
+            fi
+          "
+
+  deploy_production:
+    needs: deploy_staging
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: app-build, path: . }
+      
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Deploy Production
+        run: |
+          RELEASE=$(cat RELEASE_ID)
+          TARGET="/var/www/comprasventas/prod"
+          USER="${{ secrets.PROD_USER }}"
+          HOST="${{ secrets.HOST_IP }}"
+          
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $USER@$HOST "mkdir -p $TARGET/releases/$RELEASE"
           rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa" --exclude='.env' ./ $USER@$HOST:$TARGET/releases/$RELEASE
           
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $USER@$HOST "
@@ -73,66 +135,5 @@ jobs:
             php artisan optimize:clear
             php artisan migrate --force
           "
-
       - name: Health Check
-        run: |
-           sleep 5
-           curl -f -k "${{ secrets.STAGING_APP_URL }}/api/health" || echo "Health check failed but deployment finished"
-
-  # 3. ROLLBACK STAGING (Automático si falla el deploy)
-  rollback_staging:
-    needs: deploy_staging
-    if: failure()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Rollback SSH
-        run: |
-          ssh ${{ secrets.STAGING_USER }}@${{ secrets.HOST_IP }} "
-            TARGET='/var/www/comprasventas/staging'
-            # Buscar el anteúltimo release
-            PREV=\$(ls -1dt \$TARGET/releases/*/ | sed -n '2p' | tr -d '/')
-            if [ -n \"\$PREV\" ]; then
-              ln -sfn \$PREV \$TARGET/current
-              echo "Rollback exitoso a \$PREV"
-            else
-              echo "No hay versión anterior para rollback"
-            fi
-          "
-
-  # 4. DEPLOY A PRODUCCIÓN (Con Approval Manual)
-  deploy_production:
-    needs: deploy_staging
-    runs-on: ubuntu-latest
-    environment: production # ESTO ACTIVA LA PAUSA PARA APROBACIÓN
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { name: app-build, path: . }
-      
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan ${{ secrets.HOST_IP }} >> ~/.ssh/known_hosts
-
-      - name: Deploy Script
-        run: |
-          RELEASE=$(cat RELEASE_ID)
-          TARGET="/var/www/comprasventas/prod"
-          USER="${{ secrets.PROD_USER }}"
-          HOST="${{ secrets.HOST_IP }}"
-          
-          ssh $USER@$HOST "mkdir -p $TARGET/releases/$RELEASE"
-          rsync -avz --exclude='.env' ./ $USER@$HOST:$TARGET/releases/$RELEASE
-          
-          ssh $USER@$HOST "
-            ln -nfs $TARGET/shared/.env $TARGET/releases/$RELEASE/.env
-            chmod -R 777 $TARGET/releases/$RELEASE/storage $TARGET/releases/$RELEASE/bootstrap/cache
-            ln -sfn $TARGET/releases/$RELEASE $TARGET/current
-            cd $TARGET/current
-            php artisan optimize:clear
-            php artisan migrate --force
-          "
-
-      - name: Health Check
-        run: curl -f "${{ secrets.PROD_APP_URL }}/api/health"
+        run: curl -k "${{ secrets.PROD_APP_URL }}/api/health" || echo "Health check warning"

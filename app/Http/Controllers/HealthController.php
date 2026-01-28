@@ -17,7 +17,7 @@ class HealthController extends Controller
             $dbStatus = 'ok';
         } catch (\Exception $e) {
             $dbStatus = 'error';
-            Log::error('Health check DB failed: ' . $e->getMessage());
+            Log::error('Health check DB failed: '.$e->getMessage());
         }
         $dbLatency = round((microtime(true) - $dbStart) * 1000, 2);
 

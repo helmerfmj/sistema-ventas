@@ -1,0 +1,19 @@
+includes:
+    - ./vendor/nunomaduro/larastan/extension.neon
+
+parameters:
+    paths:
+        - app/
+        - config/
+        - database/
+        - routes/
+
+    # Level 5 es un buen balance (va del 0 al 9)
+    level: 5
+
+    ignoreErrors:
+        # Ignoramos errores comunes de seguridad falsos positivos
+        - '#Unsafe usage of new static#'
+
+    excludePaths:
+        - ./*/*/FileToBeExcluded.php

@@ -1,5 +1,5 @@
 <?php
-use App\Http\Controllers\HealthController;
+
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ReporteController;
 use App\Http\Controllers\Api\RolController;
 use App\Http\Controllers\Api\UsuarioController;
 use App\Http\Controllers\Api\VentaController;
+use App\Http\Controllers\HealthController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -20,7 +21,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 // --- TAREA CD: HEALTH CHECK
-//Route::get('/health', HealthController::class);
+// Route::get('/health', HealthController::class);
 Route::get('/health', [HealthController::class, '__invoke']);
 Route::prefix('v1')->group(function () {
 

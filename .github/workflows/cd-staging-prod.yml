@@ -1,0 +1,149 @@
+name: CD - Staging + Production
+
+on:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+jobs:
+  # 1. BUILD ÚNICO (Regla de oro: Construir una vez)
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2' # Versión segura
+          extensions: pdo_pgsql, mbstring, xml
+      
+      - name: Install Dependencies
+        # --ignore-platform-reqs evita errores de versión de PHP en repos viejos
+        run: composer install --no-dev --prefer-dist --ignore-platform-reqs --optimize-autoloader
+      
+      - name: Build Frontend
+        run: |
+          npm install --legacy-peer-deps
+          npm run build
+      
+      - name: Generate Release ID
+        run: echo "${{ github.sha }}" > RELEASE_ID
+      
+      - name: Archive Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build
+          path: |
+            ./*
+            !node_modules
+            !.git
+
+  # 2. DEPLOY A STAGING
+  deploy_staging:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: app-build, path: . }
+      
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan ${{ secrets.HOST_IP }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Script
+        run: |
+          RELEASE=$(cat RELEASE_ID)
+          # NOTA: Usamos subcarpetas porque tienes 1 solo servidor para todo
+          TARGET="/var/www/comprasventas/staging"
+          USER="${{ secrets.STAGING_USER }}"
+          HOST="${{ secrets.HOST_IP }}"
+          
+          echo "Desplegando $RELEASE a Staging..."
+          
+          ssh $USER@$HOST "mkdir -p $TARGET/releases/$RELEASE"
+          rsync -avz --exclude='.env' ./ $USER@$HOST:$TARGET/releases/$RELEASE
+          
+          ssh $USER@$HOST "
+            # 1. Linkear Secretos
+            ln -nfs $TARGET/shared/.env $TARGET/releases/$RELEASE/.env
+            # 2. Permisos
+            chmod -R 777 $TARGET/releases/$RELEASE/storage $TARGET/releases/$RELEASE/bootstrap/cache
+            # 3. Switch Atómico
+            ln -sfn $TARGET/releases/$RELEASE $TARGET/current
+            # 4. Migraciones y Limpieza
+            cd $TARGET/current
+            php artisan optimize:clear
+            php artisan migrate --force
+          "
+
+      - name: Health Check Logic
+        run: |
+           # Esperar unos segundos a que Nginx responda
+           sleep 5
+           STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.STAGING_APP_URL }}/api/health)
+           if [ "$STATUS" -ne 200 ]; then
+             echo "Health Check Failed: $STATUS"
+             exit 1
+           fi
+
+  # 3. ROLLBACK STAGING (Automático si falla el deploy)
+  rollback_staging:
+    needs: deploy_staging
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rollback SSH
+        run: |
+          ssh ${{ secrets.STAGING_USER }}@${{ secrets.HOST_IP }} "
+            TARGET='/var/www/comprasventas/staging'
+            # Buscar el anteúltimo release
+            PREV=\$(ls -1dt \$TARGET/releases/*/ | sed -n '2p' | tr -d '/')
+            if [ -n \"\$PREV\" ]; then
+              ln -sfn \$PREV \$TARGET/current
+              echo "Rollback exitoso a \$PREV"
+            else
+              echo "No hay versión anterior para rollback"
+            fi
+          "
+
+  # 4. DEPLOY A PRODUCCIÓN (Con Approval Manual)
+  deploy_production:
+    needs: deploy_staging
+    runs-on: ubuntu-latest
+    environment: production # ESTO ACTIVA LA PAUSA PARA APROBACIÓN
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: app-build, path: . }
+      
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan ${{ secrets.HOST_IP }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Script
+        run: |
+          RELEASE=$(cat RELEASE_ID)
+          TARGET="/var/www/comprasventas/prod"
+          USER="${{ secrets.PROD_USER }}"
+          HOST="${{ secrets.HOST_IP }}"
+          
+          ssh $USER@$HOST "mkdir -p $TARGET/releases/$RELEASE"
+          rsync -avz --exclude='.env' ./ $USER@$HOST:$TARGET/releases/$RELEASE
+          
+          ssh $USER@$HOST "
+            ln -nfs $TARGET/shared/.env $TARGET/releases/$RELEASE/.env
+            chmod -R 777 $TARGET/releases/$RELEASE/storage $TARGET/releases/$RELEASE/bootstrap/cache
+            ln -sfn $TARGET/releases/$RELEASE $TARGET/current
+            cd $TARGET/current
+            php artisan optimize:clear
+            php artisan migrate --force
+          "
+
+      - name: Health Check
+        run: curl -f "${{ secrets.PROD_APP_URL }}/api/health"

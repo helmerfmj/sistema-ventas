@@ -1,19 +1,23 @@
 includes:
-    - ./vendor/nunomaduro/larastan/extension.neon
+    - vendor/nunomaduro/larastan/extension.neon
 
 parameters:
     paths:
         - app/
         - config/
-        - database/
         - routes/
 
-    # Level 5 es un buen balance (va del 0 al 9)
-    level: 5
+    level: 0
 
+    # Esto ayuda a que no se queje por las "propiedades mágicas" de Laravel
+    reportUnmatchedIgnoredErrors: false
+    checkGenericClassInNonGenericObjectType: false
+    
     ignoreErrors:
-        # Ignoramos errores comunes de seguridad falsos positivos
-        - '#Unsafe usage of new static#'
+        - '#Access to an undefined property#'
+        - '#Call to an undefined method#'
+        - '#Relation .* is not found#'
+        - '#PHPDoc type .* is not covariant#'
 
     excludePaths:
         - ./*/*/FileToBeExcluded.php

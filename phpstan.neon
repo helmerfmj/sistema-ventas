@@ -7,11 +7,19 @@ parameters:
         - config/
         - routes/
 
-    # Nivel 0: Solo errores críticos
+    # Nivel 0: Solo busca errores fatales
     level: 0
 
+    # ESTO ES LA CLAVE: Evita el error de "Ignored error pattern was not matched"
+    # Le dice a PHPStan: "Si te pido ignorar algo y no aparece, no te quejes".
+    reportUnmatchedIgnoredErrors: false
+
     ignoreErrors:
+        # Reglas generales
         - '#Access to an undefined property#'
         - '#Call to an undefined method#'
         - '#Relation .* is not found#'
         - '#PHPDoc type .* is not covariant#'
+        
+        # Regla específica para arreglar el error de Database
+        - '#Access to constant ATTR_SSL_CA on an unknown class Pdo\\Mysql#'

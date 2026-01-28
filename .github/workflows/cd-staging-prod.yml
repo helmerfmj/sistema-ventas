@@ -24,6 +24,7 @@ jobs:
       - name: Build Frontend
         run: |
           npm install --legacy-peer-deps
+          npm install @popperjs/core --save # <--- AGREGA ESTA LÍNEA MÁGICA
           npm run build
       
       - name: Generate Release ID

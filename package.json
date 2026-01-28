@@ -6,7 +6,7 @@
         "build": "vite build",
         "dev": "vite",
         "test": "vitest run",
-        "lint": "eslint ."
+        "lint": "eslint resources/js"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

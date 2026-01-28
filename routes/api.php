@@ -14,14 +14,15 @@ use App\Http\Controllers\Api\VentaController;
 use App\Http\Controllers\HealthController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/health', HealthController::class);
-
 /*
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
 */
 
+// --- TAREA CD: HEALTH CHECK
+// Route::get('/health', HealthController::class);
+Route::get('/health', [HealthController::class, '__invoke']);
 Route::prefix('v1')->group(function () {
 
     // Auth Público
@@ -46,7 +47,6 @@ Route::prefix('v1')->group(function () {
         Route::controller(ProductoController::class)->prefix('productos')->group(function () {
             Route::get('generar-codigo', 'generarCodigo');
             Route::patch('{id}/toggle-estado', 'toggleEstado');
-            // Soporte para FormData (POST como PUT)
             Route::post('{id}', 'update');
         });
         Route::apiResource('productos', ProductoController::class);
@@ -65,7 +65,7 @@ Route::prefix('v1')->group(function () {
         });
         Route::apiResource('proveedores', ProveedorController::class);
 
-        // Compras (Orden importa: estáticas antes de recurso)
+        // Compras
         Route::controller(CompraController::class)->prefix('compras')->group(function () {
             Route::get('generar-codigo', 'generarCodigo');
             Route::get('proveedores', 'getProveedores');
@@ -99,7 +99,7 @@ Route::prefix('v1')->group(function () {
             Route::get('modulos', 'getModulos');
             Route::get('agrupados', 'getAgrupados');
         });
-        Route::apiResource('permisos', PermisoController::class); // index, store, show, update, destroy
+        Route::apiResource('permisos', PermisoController::class);
 
         // Usuarios
         Route::controller(UsuarioController::class)->prefix('usuarios')->group(function () {

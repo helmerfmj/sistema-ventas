@@ -129,4 +129,3 @@ Route::prefix('v1')->group(function () {
         });
     });
 });
-ESTO_ES_UN_ERROR_INTENCIONAL_PARA_EL_PROFESOR;

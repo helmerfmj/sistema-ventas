@@ -1,5 +1,5 @@
 <?php
-
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoriaController;
 use App\Http\Controllers\Api\ClienteController;
@@ -19,17 +19,9 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
-// --- TAREA CD: HEALTH CHECK 
-Route::get('/health', function () {
-    return response()->json([
-        'status' => 'ok',
-        'server_time' => now(),
-        'env' => app()->environment(),
-        'release' => config('app.release_version', 'unknown'), // Leera lo que pongamos en AppServiceProvider
-    ], 200);
-});
-
-
+// --- TAREA CD: HEALTH CHECK
+//Route::get('/health', HealthController::class);
+Route::get('/health', [HealthController::class, '__invoke']);
 Route::prefix('v1')->group(function () {
 
     // Auth Público

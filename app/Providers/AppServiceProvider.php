@@ -2,9 +2,9 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -24,16 +24,16 @@ class AppServiceProvider extends ServiceProvider
         // Fix para longitud de strings en bases de datos antiguas o MariaDB
         Schema::defaultStringLength(191);
 
-        // --- TAREA CD: OBSERVABILIDAD  
+        // --- TAREA CD: OBSERVABILIDAD
         // Intentamos leer el archivo RELEASE_ID generado por GitHub Actions
         $releaseId = 'local-dev';
-        
+
         try {
             if (file_exists(base_path('RELEASE_ID'))) {
                 $releaseId = trim(file_get_contents(base_path('RELEASE_ID')));
             }
         } catch (\Throwable $e) {
-            
+
         }
 
         // Guardamos el release en config para usarlo en el Health Check
@@ -44,7 +44,6 @@ class AppServiceProvider extends ServiceProvider
             'env' => app()->environment(),
             'release' => $releaseId,
         ]);
-        
-        
+
     }
 }

@@ -58,19 +58,31 @@ jobs:
           USER="${{ secrets.STAGING_USER }}"
           HOST="${{ secrets.HOST_IP }}"
           
-          # Crear carpeta
+          # 1. Crear directorio del release
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $USER@$HOST "mkdir -p $TARGET/releases/$RELEASE"
           
-          # Subir archivos (Aquí fallaba el 127 si faltaba rsync)
+          # 2. Subir archivos
           rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa" --exclude='.env' ./ $USER@$HOST:$TARGET/releases/$RELEASE
           
-          # Configurar
+          # 3. Configurar y desplegar (AQUÍ ESTÁ LA MAGIA)
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $USER@$HOST "
+            # --- CREAR CARPETAS FALTANTES MANUALMENTE ---
+            mkdir -p $TARGET/releases/$RELEASE/storage/framework/views
+            mkdir -p $TARGET/releases/$RELEASE/storage/framework/cache
+            mkdir -p $TARGET/releases/$RELEASE/storage/framework/sessions
+            mkdir -p $TARGET/releases/$RELEASE/storage/logs
+            mkdir -p $TARGET/releases/$RELEASE/bootstrap/cache
+            # --------------------------------------------
+
             ln -nfs $TARGET/shared/.env $TARGET/releases/$RELEASE/.env
+            
+            # Ahora sí funcionará el chmod porque las carpetas ya existen
             chmod -R 777 $TARGET/releases/$RELEASE/storage $TARGET/releases/$RELEASE/bootstrap/cache
+            
             ln -sfn $TARGET/releases/$RELEASE $TARGET/current
             cd $TARGET/current
-            # Usamos la ruta completa por si acaso, o php directo
+            
+            # Comandos de Laravel
             php artisan optimize:clear
             php artisan migrate --force
           "

@@ -22,4 +22,4 @@ parameters:
         - '#PHPDoc type .* is not covariant#'
         
         # Regla específica para arreglar el error de Database
-        - '#Access to constant ATTR_SSL_CA on an unknown class Pdo\\Mysql#'
+        - '#Access to constant ATTR_SSL_CA on an unknown class Pdo\\Mysql#' 

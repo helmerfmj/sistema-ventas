@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -17,22 +19,32 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Bootstrap any application services.
      */
-    public function boot()
+    public function boot(): void
     {
-        // Fix común para migraciones en Laravel viejos/MariaDB
-        \Illuminate\Support\Facades\Schema::defaultStringLength(191);
+        // Fix para longitud de strings en bases de datos antiguas o MariaDB
+        Schema::defaultStringLength(191);
 
-        // TAREA CD: Observabilidad y Contexto en Logs
+        // --- TAREA CD: OBSERVABILIDAD  
+        // Intentamos leer el archivo RELEASE_ID generado por GitHub Actions
+        $releaseId = 'local-dev';
+        
         try {
-            $release = file_exists(base_path('RELEASE_ID')) ? trim(file_get_contents(base_path('RELEASE_ID'))) : 'unknown';
-            
-            \Illuminate\Support\Facades\Log::withContext([
-                'release' => $release,
-                'env' => app()->environment(),
-                // 'user_id' se inyectará cuando haya auth, pero esto cumple el requisito base
-            ]);
+            if (file_exists(base_path('RELEASE_ID'))) {
+                $releaseId = trim(file_get_contents(base_path('RELEASE_ID')));
+            }
         } catch (\Throwable $e) {
-            // Fallo silencioso si el log no está listo
+            
         }
+
+        // Guardamos el release en config para usarlo en el Health Check
+        config(['app.release_version' => $releaseId]);
+
+        // Inyectamos contexto a TODOS los logs de la aplicación automáticamente
+        Log::shareContext([
+            'env' => app()->environment(),
+            'release' => $releaseId,
+        ]);
+        
+        
     }
 }

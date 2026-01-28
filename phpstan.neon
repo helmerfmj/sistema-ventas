@@ -7,17 +7,11 @@ parameters:
         - config/
         - routes/
 
+    # Nivel 0: Solo errores críticos
     level: 0
 
-    # Esto ayuda a que no se queje por las "propiedades mágicas" de Laravel
-    reportUnmatchedIgnoredErrors: false
-    checkGenericClassInNonGenericObjectType: false
-    
     ignoreErrors:
         - '#Access to an undefined property#'
         - '#Call to an undefined method#'
         - '#Relation .* is not found#'
         - '#PHPDoc type .* is not covariant#'
-
-    excludePaths:
-        - ./*/*/FileToBeExcluded.php

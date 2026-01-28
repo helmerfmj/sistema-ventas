@@ -136,8 +136,15 @@ jobs:
           USER="${{ secrets.PROD_USER }}"
           HOST="${{ secrets.HOST_IP }}"
           
+          # 1. Crear directorio (Igual que en Staging)
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $USER@$HOST "mkdir -p $TARGET/releases/$RELEASE"
+          
+          # 2. Subir archivos (Igual que en Staging)
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa" --exclude='.env' ./ $USER@$HOST:$TARGET/releases/$RELEASE
+          
+          # 3. Configurar (Igual que en Staging + mkdirs de seguridad)
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $USER@$HOST "
-            # AGREGAR ESTAS LINEAS PARA CREAR CARPETAS FALTANTES
+            # Crear carpetas críticas
             mkdir -p $TARGET/releases/$RELEASE/storage/framework/views
             mkdir -p $TARGET/releases/$RELEASE/storage/framework/cache
             mkdir -p $TARGET/releases/$RELEASE/storage/framework/sessions
@@ -146,13 +153,14 @@ jobs:
 
             ln -nfs $TARGET/shared/.env $TARGET/releases/$RELEASE/.env
             
-            # Ahora sí el chmod funcionará
             chmod -R 777 $TARGET/releases/$RELEASE/storage $TARGET/releases/$RELEASE/bootstrap/cache
             
             ln -sfn $TARGET/releases/$RELEASE $TARGET/current
             cd $TARGET/current
+            
             php artisan optimize:clear
             php artisan migrate --force
           "
+
       - name: Health Check
         run: curl -k "${{ secrets.PROD_APP_URL }}/api/health" || echo "Health check warning"
